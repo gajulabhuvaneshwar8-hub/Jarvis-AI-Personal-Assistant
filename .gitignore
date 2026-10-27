@@ -1,0 +1,21 @@
+# Python virtual environment
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Secrets and API keys
+.env
+.env.*
+!.env.example
+*.key
+free.key
+
+# Test and build files
+.pytest_cache/
+build/
+dist/
+
+# IDE files
+.vscode/
+.idea/

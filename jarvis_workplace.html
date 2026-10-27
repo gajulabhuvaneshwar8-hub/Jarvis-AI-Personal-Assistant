@@ -1,0 +1,1047 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jarvis Workplace · Holographic HUD</title>
+<style>
+@property --h { syntax: '<number>'; inherits: true; initial-value: 190; }
+:root {
+  --h: 190;
+  transition: --h 1.2s ease;
+  --c: hsl(var(--h) 100% 62%);
+  --cglow: hsl(var(--h) 100% 62% / 0.6);
+  --cd: hsl(var(--h) 100% 60% / 0.28);
+  --cs: hsl(var(--h) 100% 55% / 0.08);
+  --bg-glass: rgba(2, 10, 20, 0.72);
+  --tx: hsl(var(--h) 95% 92%);
+  --dim: hsl(var(--h) 45% 65%);
+  --up: #3dffa2;
+  --up-glow: rgba(61, 255, 162, 0.45);
+  --dn: #ff5a6e;
+  --dn-glow: rgba(255, 90, 110, 0.45);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  height: 100%;
+  background: #010408;
+  color: var(--tx);
+  font: 12px/1.4 Menlo, "SF Mono", "Fira Code", Consolas, monospace;
+  overflow: hidden;
+  user-select: none;
+}
+#bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+#app {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(310px, 26vw) 1fr minmax(310px, 26vw);
+  grid-template-rows: auto 1fr;
+  gap: 14px;
+  padding: 12px 16px;
+  animation: hudFlicker 8s infinite;
+}
+@keyframes hudFlicker {
+  0%, 100% { opacity: 1; }
+  42% { opacity: 1; }
+  42.5% { opacity: 0.94; }
+  43% { opacity: 1; }
+  78% { opacity: 1; }
+  78.3% { opacity: 0.96; }
+  78.7% { opacity: 1; }
+}
+
+header {
+  grid-column: 1 / 4;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--cd);
+  padding-bottom: 8px;
+  background: linear-gradient(90deg, rgba(2,12,24,0.6), rgba(2,12,24,0.1) 50%, rgba(2,12,24,0.6));
+  position: relative;
+}
+header::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 140px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--c), transparent);
+  animation: scanLineH 4s ease-in-out infinite alternate;
+}
+@keyframes scanLineH {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(calc(100vw - 160px)); }
+}
+
+.logo-wrap { display: flex; align-items: center; gap: 12px; }
+.logo-icon {
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid var(--c);
+  border-radius: 50%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 12px var(--cglow);
+  animation: spinSlow 14s linear infinite;
+}
+.logo-icon::before {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-top: 2px solid var(--c);
+  border-bottom: 2px solid var(--c);
+  border-radius: 2px;
+}
+@keyframes spinSlow { to { transform: rotate(360deg); } }
+
+.logo {
+  font: 800 24px "Avenir Next Condensed", Futura, sans-serif;
+  letter-spacing: 0.35em;
+  color: #fff;
+  text-shadow: 0 0 15px var(--cglow);
+}
+.sub, .hint, .dim { color: var(--dim); font-size: 10.5px; letter-spacing: 0.12em; }
+.clock { text-align: center; }
+#time {
+  font: 700 28px Menlo, monospace;
+  letter-spacing: 0.15em;
+  color: #fff;
+  text-shadow: 0 0 16px var(--cglow);
+}
+#date { color: var(--dim); font-size: 10px; letter-spacing: 0.22em; margin-top: 2px; }
+.link { text-align: right; }
+#link.ok { color: var(--up); text-shadow: 0 0 10px var(--up-glow); }
+#link.bad { color: var(--dn); text-shadow: 0 0 10px var(--dn-glow); }
+
+.col { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+#center { min-height: 0; pointer-events: none; }
+
+.panel {
+  position: relative;
+  border: 1px solid var(--cd);
+  background: var(--bg-glass);
+  backdrop-filter: blur(10px);
+  padding: 12px 14px;
+  min-height: 0;
+  border-radius: 4px;
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.4), 0 4px 20px rgba(0, 0, 0, 0.5);
+  transition: border-color 0.4s ease, box-shadow 0.4s ease;
+}
+.panel:hover {
+  border-color: var(--c);
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.4), 0 0 16px var(--cd);
+}
+.panel::before, .panel::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--c);
+  transition: all 0.3s ease;
+}
+.panel::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+.panel::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+.panel:hover::before, .panel:hover::after {
+  width: 16px;
+  height: 16px;
+  box-shadow: 0 0 8px var(--c);
+}
+
+.panel h2 {
+  font: 700 11px "Avenir Next Condensed", Futura, sans-serif;
+  letter-spacing: 0.3em;
+  color: var(--c);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-shadow: 0 0 8px var(--cglow);
+}
+.panel h2::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--cd), transparent);
+}
+.grow { flex: 1; display: flex; flex-direction: column; }
+.grow2 { flex: 1.4; display: flex; flex-direction: column; }
+
+#wave { width: 100%; height: 80px; display: block; border-radius: 3px; }
+.row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  letter-spacing: 0.18em;
+  color: var(--c);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.nodes { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+.node {
+  flex: 1;
+  text-align: center;
+  border: 1px solid var(--cd);
+  padding: 6px 2px;
+  color: var(--dim);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.3);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.node b { display: block; font-size: 11px; letter-spacing: 0.15em; }
+.node small { font-size: 8.5px; letter-spacing: 0.1em; opacity: 0.8; }
+.node.on {
+  border-color: var(--c);
+  color: #fff;
+  background: hsl(var(--h) 100% 50% / 0.28);
+  box-shadow: 0 0 16px var(--cglow), inset 0 0 10px var(--cglow);
+  transform: translateY(-2px);
+}
+.arr { color: var(--cd); font-size: 14px; }
+
+.kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 14px;
+  margin-top: 10px;
+  font-size: 11px;
+}
+.kv b { color: var(--dim); font-weight: 400; letter-spacing: 0.1em; }
+.kv span {
+  color: #fff;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#chat, #cards, #stocks {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+#chat::-webkit-scrollbar, #cards::-webkit-scrollbar, #stocks::-webkit-scrollbar { display: none; }
+
+.m {
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  border-radius: 3px;
+  background: rgba(0,0,0,0.25);
+  border-left: 2px solid transparent;
+  animation: messageIn 0.35s ease;
+}
+@keyframes messageIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: none; }
+}
+.m i { font-style: normal; letter-spacing: 0.12em; margin-right: 6px; font-size: 10px; font-weight: bold; }
+.m.you { border-left-color: var(--c); color: #fff; }
+.m.you i { color: var(--c); }
+.m.jarvis { border-left-color: var(--up); color: #e6fff4; }
+.m.jarvis i { color: var(--up); }
+.m.sys { border-left-color: var(--dim); color: var(--dim); font-size: 10.5px; }
+.m small { color: var(--dim); margin-left: 8px; font-size: 9.5px; }
+
+.srow {
+  display: grid;
+  grid-template-columns: 1fr 90px auto;
+  gap: 2px 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background 0.2s ease;
+}
+.srow:hover { background: rgba(255, 255, 255, 0.03); }
+.sn { font-weight: 700; letter-spacing: 0.08em; color: #fff; }
+.ss { font-size: 9.5px; color: var(--dim); }
+.spark { width: 90px; height: 26px; }
+.sr { text-align: right; }
+.sp { font-weight: 700; color: #fff; font-size: 12px; }
+.sc { font-size: 11px; font-weight: 600; margin-top: 1px; }
+.up { color: var(--up); text-shadow: 0 0 6px var(--up-glow); }
+.dn { color: var(--dn); text-shadow: 0 0 6px var(--dn-glow); }
+.sa {
+  grid-column: 1 / 4;
+  font-size: 9.5px;
+  color: var(--dim);
+  letter-spacing: 0.06em;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+}
+.signal-badge {
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.sig-buy { background: rgba(61, 255, 162, 0.15); color: #3dffa2; border: 1px solid rgba(61, 255, 162, 0.4); }
+.sig-sell { background: rgba(255, 90, 110, 0.15); color: #ff5a6e; border: 1px solid rgba(255, 90, 110, 0.4); }
+.sig-hold { background: rgba(255, 200, 50, 0.15); color: #ffd13b; border: 1px solid rgba(255, 200, 50, 0.4); }
+
+.card {
+  border-left: 2px solid var(--c);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: var(--cs);
+  border-radius: 0 4px 4px 0;
+  animation: cardSlide 0.4s ease;
+}
+@keyframes cardSlide {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.ct { color: var(--c); letter-spacing: 0.2em; font-size: 11px; margin-bottom: 4px; font-weight: 700; }
+.ct small { color: var(--dim); margin-left: 8px; font-weight: 400; }
+.empty { color: var(--dim); font-size: 11px; font-style: italic; padding: 6px 0; }
+
+.vit { display: grid; grid-template-columns: 60px 1fr 54px; gap: 6px 8px; align-items: center; }
+.vit b { font-weight: 500; color: var(--dim); letter-spacing: 0.1em; font-size: 11px; }
+.bar {
+  height: 8px;
+  border: 1px solid var(--cd);
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+.bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, hsl(var(--h) 100% 45%), var(--c));
+  box-shadow: 0 0 10px var(--c);
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.vit span { text-align: right; color: #fff; font-size: 11px; }
+
+#core {
+  position: fixed;
+  z-index: 3;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  width: 42vw;
+  pointer-events: none;
+}
+#cst {
+  font: 800 32px "Avenir Next Condensed", Futura, sans-serif;
+  letter-spacing: 0.45em;
+  color: #fff;
+  text-shadow: 0 0 20px var(--cglow);
+  padding-left: 0.45em;
+  transition: color 0.4s ease;
+}
+#cnote { color: var(--dim); font-size: 11px; letter-spacing: 0.15em; min-height: 16px; margin-top: 4px; }
+#heard {
+  margin-top: 8px;
+  color: #fff;
+  font-size: 13.5px;
+  min-height: 20px;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
+}
+
+.scan {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 3px);
+}
+.scan::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 160px;
+  top: -160px;
+  background: linear-gradient(180deg, transparent, hsl(var(--h) 100% 60% / 0.08), transparent);
+  animation: scanSweep 6s linear infinite;
+}
+@keyframes scanSweep { to { top: 100%; } }
+
+/* Holographic Blueprint Grid */
+.corner-hud {
+  position: fixed;
+  pointer-events: none;
+  z-index: 4;
+  color: var(--dim);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+}
+#c-tl { top: 16px; left: 20px; }
+#c-tr { top: 16px; right: 20px; text-align: right; }
+#c-bl { bottom: 16px; left: 20px; }
+#c-br { bottom: 16px; right: 20px; text-align: right; }
+</style>
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+
+<div id="app">
+ <header>
+  <div class="logo-wrap">
+    <div class="logo-icon"></div>
+    <div>
+      <div class="logo">J.A.R.V.I.S</div>
+      <div class="sub">MARK VII EXECUTIVE ASSISTANT · <span id="mode">ACTIVE</span></div>
+    </div>
+  </div>
+  <div class="clock">
+    <div id="time">--:--:--</div>
+    <div id="date"></div>
+  </div>
+  <div class="link">
+    <div id="link" class="ok">● QUANTUM LINK OK</div>
+    <div class="hint">Double-click for Fullscreen · Say "Close Workplace" to exit</div>
+  </div>
+ </header>
+
+ <section class="col">
+  <div class="panel">
+    <h2>VOICE FREQUENCY OSCILLOSCOPE</h2>
+    <canvas id="wave"></canvas>
+    <div class="row">
+      <span id="stl">LISTENING</span>
+      <span id="micv">MIC READY</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>NEURAL CORE PIPELINE</h2>
+    <div class="nodes">
+      <div class="node" id="n-mic"><b>MIC</b><small>stream</small></div><span class="arr">›</span>
+      <div class="node" id="n-ear"><b>EAR</b><small>recognize</small></div><span class="arr">›</span>
+      <div class="node" id="n-mind"><b>MIND</b><small>reason</small></div><span class="arr">›</span>
+      <div class="node" id="n-hands"><b>HANDS</b><small>execute</small></div><span class="arr">›</span>
+      <div class="node" id="n-voice"><b>VOICE</b><small>respond</small></div>
+    </div>
+    <div class="kv" id="kv"></div>
+  </div>
+
+  <div class="panel grow">
+    <h2>TELEMETRY LOGS & CHAT</h2>
+    <div id="chat"></div>
+  </div>
+ </section>
+
+ <section id="center"></section>
+
+ <section class="col">
+  <div class="panel grow2">
+    <h2>LIVE MARKET INTELLIGENCE <span class="dim" id="mood"></span></h2>
+    <div id="stocks"></div>
+  </div>
+
+  <div class="panel grow">
+    <h2>EXECUTIVE BRIEFINGS & INBOX</h2>
+    <div id="cards"></div>
+  </div>
+
+  <div class="panel">
+    <h2>HARDWARE VITALS</h2>
+    <div class="vit" id="vit"></div>
+  </div>
+ </section>
+</div>
+
+<div id="core">
+  <div id="cst">LISTENING</div>
+  <div id="cnote">SYSTEM OPERATIONAL</div>
+  <div id="heard"></div>
+</div>
+
+<div class="corner-hud" id="c-tl">SYS.ID: MK-7 // CORE.ONLINE</div>
+<div class="corner-hud" id="c-tr">LATENCY: 12ms // BUFFER: OK</div>
+<div class="corner-hud" id="c-bl">FAILOVER: HYBRID LOCAL/CLOUD</div>
+<div class="corner-hud" id="c-br">ENCRYPTION: 4096-BIT RSA</div>
+
+<div class="scan"></div>
+
+<script>
+(function(){
+const $ = s => document.querySelector(s);
+function el(t, c, x) {
+  const e = document.createElement(t);
+  if (c) e.className = c;
+  if (x !== undefined) e.textContent = x;
+  return e;
+}
+
+const HUE = {
+  listening: 185,
+  recognizing: 48,
+  thinking: 280,
+  speaking: 145,
+  idle: 195,
+  starting: 195,
+  off: 350
+};
+
+const LABEL = {
+  listening: 'LISTENING',
+  recognizing: 'HEARING YOU',
+  thinking: 'PROCESSING QUERY',
+  speaking: 'JARVIS RESPONDING',
+  starting: 'CALIBRATING',
+  off: 'OFFLINE'
+};
+
+const NODE = {
+  listening: 'mic',
+  recognizing: 'ear',
+  thinking: 'mind',
+  speaking: 'voice'
+};
+
+let S = null, lastOk = 0, lvQ = [], lvN = 0, level = 0, amp = 0, hue = 190;
+let seenChat = 0, cardSig = '', stockSig = '', lastSt = '';
+const bg = $('#bg'), g = bg.getContext('2d'), wv = $('#wave'), wg = wv.getContext('2d');
+let W = 0, H = 0, DPR = 1, R = 300, CX = 0, CY = 0;
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 1.5);
+  W = innerWidth;
+  H = innerHeight;
+  bg.width = W * DPR;
+  bg.height = H * DPR;
+  bg.style.width = W + 'px';
+  bg.style.height = H + 'px';
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+  wv.width = wv.clientWidth * DPR;
+  wv.height = wv.clientHeight * DPR;
+  wg.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+  R = Math.min(W * 0.17, H * 0.32);
+  CX = W / 2;
+  CY = H / 2 + 10;
+  $('#core').style.top = (CY + R + 14) + 'px';
+}
+addEventListener('resize', resize);
+resize();
+
+addEventListener('dblclick', () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen().catch(() => {});
+});
+
+setInterval(() => {
+  const d = new Date();
+  $('#time').textContent = d.toLocaleTimeString('en-GB');
+  $('#date').textContent = d.toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  }).toUpperCase();
+  const ok = Date.now() - lastOk < 4000;
+  const l = $('#link');
+  l.className = ok ? 'ok' : 'bad';
+  l.textContent = ok ? '● QUANTUM LINK OK' : '● LOCAL STANDBY';
+}, 1000);
+
+/* ---------- Poll State ---------- */
+async function poll() {
+  try {
+    const r = await fetch('/api/state?lv=' + lvN, { cache: 'no-store' });
+    const j = await r.json();
+    S = j;
+    lastOk = Date.now();
+    if (j.mic) {
+      if (j.mic.n < lvN) lvQ = [];
+      lvN = j.mic.n;
+      for (const a of j.mic.a) lvQ.push(a);
+      if (lvQ.length > 40) lvQ = lvQ.slice(-40);
+    }
+    render(j);
+  } catch(e) {}
+  setTimeout(poll, 400);
+}
+
+function fmt(n) {
+  return Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+}
+
+function spark(a, up) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const sv = document.createElementNS(NS, 'svg');
+  sv.setAttribute('viewBox', '0 0 90 26');
+  sv.setAttribute('class', 'spark');
+  if (!a || a.length < 2) return sv;
+  const mn = Math.min(...a), mx = Math.max(...a), d = (mx - mn) || 1;
+  const pts = a.map((v, i) => (i / (a.length - 1) * 90).toFixed(1) + ',' + (24 - ((v - mn) / d) * 22).toFixed(1)).join(' ');
+  const p = document.createElementNS(NS, 'polyline');
+  p.setAttribute('points', pts);
+  p.setAttribute('fill', 'none');
+  p.setAttribute('stroke', up ? '#3dffa2' : '#ff5a6e');
+  p.setAttribute('stroke-width', '1.8');
+  sv.appendChild(p);
+  return sv;
+}
+
+function renderStocks(list) {
+  const box = $('#stocks');
+  box.textContent = '';
+  let up = 0, dn = 0;
+  for (const s of list) {
+    const row = el('div', 'srow');
+    const l = el('div');
+    l.append(el('div', 'sn', s.name || s.sym));
+    if (s.err) {
+      l.append(el('div', 'ss', s.sym + ' · OFFLINE'));
+      row.append(l);
+      box.append(row);
+      continue;
+    }
+    l.append(el('div', 'ss', s.sym + (s.stale ? ' · CACHED' : ' · REAL-TIME')));
+    const upx = s.pct >= 0;
+    if (s.pct > 0) up++;
+    if (s.pct < 0) dn++;
+    const r = el('div', 'sr');
+    r.append(
+      el('div', 'sp', fmt(s.price)),
+      el('div', 'sc ' + (upx ? 'up' : 'dn'), (upx ? '▲ +' : '▼ ') + Math.abs(s.pct).toFixed(2) + '%')
+    );
+    row.append(l, spark(s.spark, upx), r);
+
+    // Buy/Sell/Hold Signal Determination
+    let sigClass = 'sig-hold', sigText = 'HOLD';
+    if (s.pct > 1.2 && s.above) { sigClass = 'sig-buy'; sigText = 'STRONG BUY'; }
+    else if (s.pct >= 0 && s.above) { sigClass = 'sig-buy'; sigText = 'BUY'; }
+    else if (s.pct < -1.2 && !s.above) { sigClass = 'sig-sell'; sigText = 'STRONG SELL'; }
+    else if (s.pct < 0) { sigClass = 'sig-sell'; sigText = 'TAKE PROFIT'; }
+
+    const metaRow = el('div', 'sa');
+    metaRow.append(
+      el('span', '', '5D MOMENTUM ' + (s.mom >= 0 ? '+' : '') + s.mom + '%'),
+      el('span', 'signal-badge ' + sigClass, sigText)
+    );
+    row.append(metaRow);
+    box.append(row);
+  }
+  $('#mood').textContent = list.length ? ' · ' + up + ' BULL / ' + dn + ' BEAR' : '';
+}
+
+function render(j) {
+  const st = j.state;
+  if (st !== lastSt && HUE[st] !== undefined) {
+    lastSt = st;
+    document.documentElement.style.setProperty('--h', HUE[st]);
+  }
+  const lab = LABEL[st] || String(st).toUpperCase();
+  $('#stl').textContent = lab;
+  $('#cst').textContent = lab;
+  $('#cnote').textContent = (j.note && j.note !== 'Ready') ? j.note : 'SYSTEM FULLY ARMED';
+  $('#mode').textContent = (j.mode || 'HYBRID').toUpperCase() + ' MODE';
+  $('#micv').textContent = st === 'listening' ? 'MIC ' + Math.round(level * 100) + '%' : 'STREAM ACTIVE';
+  $('#heard').textContent = j.last_you ? '▸ "' + j.last_you + '"' : '';
+
+  for (const id of ['mic', 'ear', 'mind', 'hands', 'voice']) {
+    $('#n-' + id).classList.toggle('on', NODE[st] === id || (id === 'hands' && j.tool_active));
+  }
+
+  const kv = $('#kv');
+  kv.textContent = '';
+  const rows = [
+    ['ENGINE MODEL', j.model || 'Groq / Llama-3.3 + Local'],
+    ['SPEECH LATENCY', (j.t_rec || 0).toFixed(1) + ' s'],
+    ['COGNITION TIME', (j.t_think || 0).toFixed(1) + ' s'],
+    ['LAST COMMAND', j.last_tool || 'App Launcher'],
+    ['COMMANDS RUN', j.tools || '0'],
+    ['ACTIVE CACHE', (j.facts || '0') + ' records'],
+    ['INBOX STATUS', j.mail_age === null ? 'Synced' : j.mail_age + 'm ago'],
+    ['FAILOVER', 'AUTO-SWITCH ON']
+  ];
+  for (const [k, v] of rows) {
+    kv.append(el('b', '', k), el('span', '', String(v)));
+  }
+
+  const cb = $('#chat');
+  let added = false;
+  for (const m of j.chat) {
+    if (m.i > seenChat) {
+      seenChat = m.i;
+      added = true;
+      const d = el('div', 'm ' + m.k);
+      d.append(
+        el('i', '', m.k === 'you' ? 'USER ▸' : (m.k === 'jarvis' ? 'JARVIS ▸' : 'SYS ▸')),
+        document.createTextNode(m.x),
+        el('small', '', m.t)
+      );
+      cb.append(d);
+    }
+  }
+  if (added) {
+    while (cb.children.length > 80) cb.removeChild(cb.firstChild);
+    cb.scrollTop = cb.scrollHeight;
+  }
+
+  const sig = j.cards.map(c => c.i).join();
+  if (sig !== cardSig) {
+    cardSig = sig;
+    const box = $('#cards');
+    box.textContent = '';
+    if (!j.cards.length) {
+      box.append(el('div', 'empty', 'Command "Check my emails" or "Stock market update" to populate dynamic briefings.'));
+    }
+    for (const c of j.cards) {
+      const d = el('div', 'card');
+      const t = el('div', 'ct', c.title);
+      t.append(el('small', '', c.t));
+      d.append(t, el('div', '', c.body));
+      box.append(d);
+    }
+  }
+
+  const ss = JSON.stringify(j.stocks);
+  if (ss !== stockSig) {
+    stockSig = ss;
+    renderStocks(j.stocks);
+  }
+
+  const v = $('#vit');
+  v.textContent = '';
+  const sy = j.sys || {};
+  function bar(n, val, txt) {
+    if (val === undefined || val === null) return;
+    const b = el('div', 'bar');
+    const i = document.createElement('i');
+    i.style.width = Math.max(0, Math.min(100, val)) + '%';
+    b.append(i);
+    v.append(el('b', '', n), b, el('span', '', txt));
+  }
+  bar('CPU', sy.cpu, Math.round(sy.cpu || 0) + '%');
+  bar('RAM', sy.ram, Math.round(sy.ram || 0) + '%');
+  bar('DISK', sy.disk, (sy.free !== undefined ? sy.free + 'G free' : ''));
+  if (sy.bat !== undefined) bar('BATTERY', sy.bat, sy.bat + '%' + (sy.plug ? ' ⚡' : ''));
+  if (sy.up) {
+    const h = Math.floor(sy.up / 3600);
+    v.append(el('b', '', 'UPTIME'), el('div'), el('span', '', h + 'h ' + Math.floor((sy.up % 3600) / 60) + 'm'));
+  }
+}
+poll();
+
+/* ---------- 3D Holographic Rendering Engine ---------- */
+const PARTS = Array.from({ length: 90 }, () => ({
+  x: Math.random(),
+  y: Math.random(),
+  v: 10 + Math.random() * 28,
+  r: 0.6 + Math.random() * 1.6,
+  a: 0.2 + Math.random() * 0.6
+}));
+
+// Floating 3D Satellites / Quantum Orbits
+const ORBITS = Array.from({ length: 12 }, (_, i) => ({
+  speed: 0.8 + Math.random() * 0.6,
+  dist: 0.85 + Math.random() * 0.35,
+  phase: (i / 12) * Math.PI * 2,
+  size: 2.2 + Math.random() * 2.5
+}));
+
+// Wireframe 3D Globe
+const GL = [];
+for (const lat of [-60, -30, 0, 30, 60]) {
+  const p = [];
+  const la = lat * Math.PI / 180;
+  for (let j = 0; j <= 52; j++) {
+    const a = j / 52 * Math.PI * 2;
+    p.push([Math.cos(la) * Math.cos(a), Math.sin(la), Math.cos(la) * Math.sin(a)]);
+  }
+  GL.push(p);
+}
+for (let k = 0; k < 12; k++) {
+  const lon = k / 12 * Math.PI;
+  const p = [];
+  for (let j = 0; j <= 52; j++) {
+    const b = j / 52 * Math.PI * 2;
+    p.push([Math.cos(b) * Math.cos(lon), Math.sin(b), Math.cos(b) * Math.sin(lon)]);
+  }
+  GL.push(p);
+}
+
+const col = (l, a) => `hsla(${hue.toFixed(0)}, 100%, ${l}%, ${a})`;
+
+function globe(cx, cy, r, t) {
+  const ry = t * 0.4, tx = 0.42;
+  const cyc = Math.cos(ry), syc = Math.sin(ry), ct = Math.cos(tx), stt = Math.sin(tx);
+  const fr = new Path2D(), bk = new Path2D();
+
+  for (const pts of GL) {
+    let prev = null;
+    for (const p of pts) {
+      const x = p[0] * cyc + p[2] * syc;
+      const z = -p[0] * syc + p[2] * cyc;
+      const y = p[1];
+      const y2 = y * ct - z * stt;
+      const z2 = y * stt + z * ct;
+      const px = cx + x * r;
+      const py = cy + y2 * r;
+      if (prev) {
+        const P = z2 >= 0 ? fr : bk;
+        P.moveTo(prev[0], prev[1]);
+        P.lineTo(px, py);
+      }
+      prev = [px, py];
+    }
+  }
+  g.lineWidth = 1;
+  g.strokeStyle = col(55, 0.18);
+  g.stroke(bk);
+  g.strokeStyle = col(72, 0.85);
+  g.stroke(fr);
+}
+
+function reactor(cx, cy, R, t) {
+  g.lineCap = 'round';
+
+  // 1. Outer Tech Ring with Angular Degree Ticks
+  g.save();
+  g.translate(cx, cy);
+  g.rotate(t * 0.06);
+  g.lineWidth = 1.4;
+  g.strokeStyle = col(65, 0.6);
+  g.beginPath();
+  for (let i = 0; i < 140; i++) {
+    const a = i / 140 * Math.PI * 2;
+    const l = (i % 10 === 0) ? 16 : ((i % 5 === 0) ? 10 : 5);
+    g.moveTo(Math.cos(a) * R, Math.sin(a) * R);
+    g.lineTo(Math.cos(a) * (R - l), Math.sin(a) * (R - l));
+  }
+  g.stroke();
+  g.restore();
+
+  // 2. Pulsing Quantum Arc Segments
+  g.save();
+  g.translate(cx, cy);
+  g.rotate(-t * 0.22);
+  g.lineWidth = 4.5;
+  g.strokeStyle = col(65, 0.85);
+  for (let k = 0; k < 4; k++) {
+    g.beginPath();
+    g.arc(0, 0, R * 0.92, k * 1.5708 + 0.15, k * 1.5708 + 1.25);
+    g.stroke();
+  }
+  g.restore();
+
+  // 3. Counter-Rotating Data Dash Ring
+  g.save();
+  g.translate(cx, cy);
+  g.rotate(t * 0.35);
+  g.setLineDash([4, 10]);
+  g.lineWidth = 2.2;
+  g.strokeStyle = col(75, 0.7);
+  g.beginPath();
+  g.arc(0, 0, R * 0.82, 0, Math.PI * 2);
+  g.stroke();
+  g.setLineDash([]);
+  g.restore();
+
+  // 4. Audio Reactive Plasma Corona Spikes
+  const N = 100, r0 = R * 0.62;
+  g.strokeStyle = col(68, 0.95);
+  g.lineWidth = 2.4;
+  g.beginPath();
+  for (let i = 0; i < N; i++) {
+    const a = i / N * Math.PI * 2 + t * 0.12;
+    const spike = Math.sin(i * 1.8 + t * 5) * Math.cos(i * 0.4 - t * 2.5);
+    const len = 5 + (amp * R * 0.25) * (0.35 + Math.abs(spike));
+    g.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
+    g.lineTo(cx + Math.cos(a) * (r0 + len), cy + Math.sin(a) * (r0 + len));
+  }
+  g.stroke();
+
+  // 5. Conic Radar Sweep
+  if (g.createConicGradient) {
+    const cg = g.createConicGradient(t * 1.4, cx, cy);
+    cg.addColorStop(0, col(60, 0));
+    cg.addColorStop(0.85, col(60, 0));
+    cg.addColorStop(1, col(75, 0.45));
+    g.fillStyle = cg;
+    g.beginPath();
+    g.arc(cx, cy, R * 0.58, 0, Math.PI * 2);
+    g.fill();
+  }
+
+  // 6. Holographic Central Globe
+  globe(cx, cy, R * 0.42, t);
+
+  // 7. Arc Core Heart Plasma Core (Iron Man Heartbeat)
+  const pulse = Math.sin(t * 3.5) * 0.05 + Math.sin(t * 7) * 0.02;
+  const cr = R * (0.16 + amp * 0.07 + pulse);
+  const rg = g.createRadialGradient(cx, cy, 0, cx, cy, cr * 2.2);
+  rg.addColorStop(0, '#ffffff');
+  rg.addColorStop(0.25, col(92, 0.95));
+  rg.addColorStop(0.65, col(70, 0.55));
+  rg.addColorStop(1, col(50, 0));
+  g.fillStyle = rg;
+  g.beginPath();
+  g.arc(cx, cy, cr * 2.2, 0, Math.PI * 2);
+  g.fill();
+
+  // 8. Rotating Starburst Aperture Blades
+  g.save();
+  g.translate(cx, cy);
+  g.rotate(t * 0.5);
+  g.strokeStyle = col(85, 0.95);
+  g.lineWidth = R * 0.03;
+  for (let k = 0; k < 12; k++) {
+    const a = k / 12 * Math.PI * 2;
+    g.beginPath();
+    g.arc(0, 0, R * 0.24, a + 0.06, a + 0.4);
+    g.stroke();
+  }
+  g.restore();
+
+  // 9. Orbiting Quantum Nodes
+  for (const orb of ORBITS) {
+    const angle = t * orb.speed + orb.phase;
+    const ox = cx + Math.cos(angle) * (R * orb.dist);
+    const oy = cy + Math.sin(angle) * (R * orb.dist * 0.65);
+    g.fillStyle = col(95, 0.9);
+    g.shadowColor = col(80, 1);
+    g.shadowBlur = 10;
+    g.beginPath();
+    g.arc(ox, oy, orb.size * (1 + amp * 0.8), 0, Math.PI * 2);
+    g.fill();
+    g.shadowBlur = 0;
+  }
+}
+
+function drawBg(dt, t) {
+  g.globalCompositeOperation = 'source-over';
+  g.fillStyle = '#01050a';
+  g.fillRect(0, 0, W, H);
+
+  // Radial Ambient Light
+  const rg = g.createRadialGradient(CX, CY, 0, CX, CY, Math.max(W, H) * 0.65);
+  rg.addColorStop(0, col(20, 0.65));
+  rg.addColorStop(1, 'rgba(1, 5, 10, 0)');
+  g.fillStyle = rg;
+  g.fillRect(0, 0, W, H);
+
+  g.globalCompositeOperation = 'lighter';
+
+  // Cyber Horizon Grid
+  const hz = H * 0.65;
+  g.lineWidth = 1;
+  g.strokeStyle = col(60, 0.12);
+  g.beginPath();
+  for (let i = 0; i < 18; i++) {
+    const f = (i + (t * 0.35) % 1) / 18;
+    const y = hz + f * f * (H - hz);
+    g.moveTo(0, y);
+    g.lineTo(W, y);
+  }
+  for (let i = -16; i <= 16; i++) {
+    g.moveTo(W / 2 + i * W * 0.012, hz);
+    g.lineTo(W / 2 + i * W * 0.15, H);
+  }
+  g.stroke();
+
+  // Floating Cyber Particles
+  g.fillStyle = col(80, 0.6);
+  for (const p of PARTS) {
+    p.y -= p.v * dt / 1000 / H;
+    if (p.y < 0) {
+      p.y = 1;
+      p.x = Math.random();
+    }
+    g.globalAlpha = p.a;
+    g.beginPath();
+    g.arc(p.x * W, p.y * H, p.r, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.globalAlpha = 1;
+
+  // Center Reactor Core
+  reactor(CX, CY, R, t);
+  g.globalCompositeOperation = 'source-over';
+}
+
+function drawWave(t) {
+  const w = wv.clientWidth, h = wv.clientHeight, mid = h / 2;
+  wg.clearRect(0, 0, w, h);
+
+  // Background Centerline
+  wg.strokeStyle = col(60, 0.25);
+  wg.lineWidth = 1;
+  wg.beginPath();
+  wg.moveTo(0, mid);
+  wg.lineTo(w, mid);
+  wg.stroke();
+
+  const sp = (S && S.state === 'speaking') ? 2.4 : 1;
+
+  // Multi-tier Oscilloscope Waveform with Neon Glow
+  for (let k = 0; k < 4; k++) {
+    wg.beginPath();
+    for (let x = 0; x <= w; x += 3) {
+      const nx = x / w;
+      const env = Math.sin(nx * Math.PI);
+      const wave = Math.sin(nx * (12 + k * 8) + t * (2.2 + k * 1.2) * sp) * (h * 0.42) * amp * env * (1 - k * 0.2)
+                 + Math.sin(nx * 48 + t * 6) * h * 0.05 * amp;
+      const y = mid + wave;
+      if (x === 0) wg.moveTo(x, y);
+      else wg.lineTo(x, y);
+    }
+    wg.strokeStyle = col(65 + k * 8, 0.95 - k * 0.25);
+    wg.lineWidth = 2.4 - k * 0.5;
+    wg.shadowColor = col(70, 0.8);
+    wg.shadowBlur = 8;
+    wg.stroke();
+    wg.shadowBlur = 0;
+  }
+}
+
+let last = 0, T = 0;
+function frame(ts) {
+  requestAnimationFrame(frame);
+  if (ts - last < 25) return;
+  const dt = Math.min(ts - last, 100);
+  last = ts;
+  T += dt / 1000;
+
+  if (lvQ.length) {
+    const n = Math.max(1, Math.round(dt / 50));
+    let v = level;
+    for (let i = 0; i < n && lvQ.length; i++) v = lvQ.shift();
+    level = v;
+  } else {
+    level *= 0.88;
+  }
+
+  const st = S ? S.state : 'idle';
+  let tg;
+  switch (st) {
+    case 'listening': tg = 0.08 + Math.min(1, level * 1.5) * 0.92; break;
+    case 'recognizing': tg = 0.25 + 0.15 * Math.sin(T * 8); break;
+    case 'thinking': tg = 0.20 + 0.22 * Math.abs(Math.sin(T * 3)); break;
+    case 'speaking': tg = 0.45 + 0.35 * Math.abs(Math.sin(T * 9.5) * Math.sin(T * 5.2)) + level * 0.3; break;
+    default: tg = 0.07;
+  }
+  amp += (tg - amp) * 0.28;
+
+  const ht = HUE[st] !== undefined ? HUE[st] : 190;
+  hue += (ht - hue) * 0.08;
+
+  drawBg(dt, T);
+  drawWave(T);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
